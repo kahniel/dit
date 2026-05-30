@@ -1,0 +1,5 @@
+data/
+runs/
+.ipynb_checkpoints/
+.DS_Store
+.vscode/
