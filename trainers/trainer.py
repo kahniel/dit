@@ -9,6 +9,7 @@ import inspect
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 MiB = 1024**2
@@ -64,7 +65,7 @@ class Trainer(ABC):
         for pg in self.opt.param_groups:
             pg["lr"] = lr
 
-    def checkpoint(self, ckpt_name: str):
+    def checkpoint(self, ckpt_name: str, global_step: int):
         pass
 
     def get_optimizer(self, lr: float):
@@ -188,6 +189,9 @@ class Trainer(ABC):
 
         self._set_lr(0.0 if warmup_steps > 0 else lr)
 
+        self.writer = SummaryWriter(
+            log_dir=os.path.join(self.output_dir, "tensorboard")
+        )
         pbar = tqdm(
             total=num_epochs * len(self.dataloader), desc=f"Epoch {1}/{num_epochs}"
         )
@@ -223,6 +227,8 @@ class Trainer(ABC):
                     self.losses.append(loss_value)
                     self.losses_smoothed.append(loss_smoothed)
                     self.steps.append(global_step)
+                    self.writer.add_scalar("train/loss", loss_value, global_step)
+                    self.writer.add_scalar("train/lr", cur_lr, global_step)
 
                 pbar.update()
                 pbar.set_description(
@@ -230,13 +236,13 @@ class Trainer(ABC):
                     f"lr={cur_lr:.2e}, loss={loss_value:.4f}"
                 )
 
-            if ckpt_every is not None and global_step % ckpt_every == 0:
+            if ckpt_every is not None and epoch % ckpt_every == 0:
                 self.model.eval()
-                self.checkpoint(f"epoch_{epoch}")
+                self.checkpoint(f"epoch_{epoch}", global_step)
                 self.model.train()
 
-        if ckpt_every is None or global_step % ckpt_every != 0:
-            self.checkpoint(f"epoch_{num_epochs}")
+        if ckpt_every is None or num_epochs % ckpt_every != 0:
+            self.checkpoint(f"epoch_{num_epochs}", global_step)
 
         self.model.eval()
 

@@ -35,7 +35,7 @@ class VAETrainer(Trainer):
         return x[:n], y[:n]
 
     @torch.no_grad()
-    def checkpoint(self, ckpt_name: str):
+    def checkpoint(self, ckpt_name: str, global_step: int):
         state = {
             "raw": self.model.state_dict(),
             "opt": self.opt.state_dict(),
@@ -63,6 +63,8 @@ class VAETrainer(Trainer):
         x_all = torch.clamp(x_all, 0.0, 1.0)
 
         grid = make_grid(x_all, nrow=num_images, normalize=False)
+
+        writer.add_image("samples/vae_reconstructions", grid, global_step)
 
         plt.figure(figsize=(12, 6))
         plt.imshow(grid.permute(1, 2, 0))

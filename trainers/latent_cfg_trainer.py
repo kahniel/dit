@@ -181,6 +181,7 @@ class LatentCFGTrainer(Trainer):
         guidance_scales: tuple[float, ...] = (1.0, 1.5, 2.0),
         use_tqdm: bool = False,
         use_raw: bool = False,
+        global_step: Optional[int] = None,
         title: Optional[str] = None,
     ):
         fig, axes = plt.subplots(
@@ -206,6 +207,11 @@ class LatentCFGTrainer(Trainer):
             axes[idx].axis("off")
             axes[idx].set_title(f"w={guidance_scale:.1f}")
 
+            if global_step is not None:
+                self.writer.add_image(
+                    f"samples/guidance_{guidance_scale:.1f}", grid, global_step
+                )
+
         if title is not None:
             fig.suptitle(title)
 
@@ -217,7 +223,7 @@ class LatentCFGTrainer(Trainer):
             plt.show()
 
     @torch.no_grad()
-    def checkpoint(self, ckpt_name: str):
+    def checkpoint(self, ckpt_name: str, global_step: int):
         state = {
             "raw": self.model.state_dict(),
             "ema": self.ema_model.state_dict(),
@@ -248,4 +254,5 @@ class LatentCFGTrainer(Trainer):
         self.visualize_samples(
             save_path=os.path.join(self.output_dir, f"{ckpt_name}_output.png"),
             title=title,
+            global_step=global_step,
         )
