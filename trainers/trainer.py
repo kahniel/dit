@@ -131,7 +131,7 @@ class Trainer(ABC):
 
         self.losses = state["losses"]
         self.steps = state["steps"]
-        self.losses_ema = state.get("losses_smoothed", [])
+        self.losses_smoothed = state.get("losses_smoothed", [])
 
     def train(
         self,
@@ -175,21 +175,24 @@ class Trainer(ABC):
         # Initialize optimizer and LR
         self.opt = self.get_optimizer(lr)
         if resume_from is not None:
-            state = torch.load(f"{self.output_dir}/{resume_from}")
+            state = torch.load(f"{self.output_dir}/{resume_from}.pt")
             self.opt.load_state_dict(state["opt"])
 
         self.model.train()
         device = next(self.model.parameters()).device
 
         global_step = self.steps[-1] if len(self.steps) > 0 else 0
-        loss_smoothed = self.losses_smoothed[-1] if len(self.losses_smoothed) > 0 else None
+        loss_smoothed = (
+            self.losses_smoothed[-1] if len(self.losses_smoothed) > 0 else None
+        )
 
         self._set_lr(0.0 if warmup_steps > 0 else lr)
 
+        pbar = tqdm(
+            total=num_epochs * len(self.dataloader), desc=f"Epoch {1}/{num_epochs}"
+        )
         for epoch in range(1, num_epochs + 1):
-            pbar = tqdm(self.dataloader, desc=f"Epoch {epoch}/{num_epochs}")
-
-            for batch in pbar:
+            for batch in self.dataloader:
                 if warmup_steps > 0:
                     cur_lr = lr * min(1.0, (global_step + 1) / warmup_steps)
                     self._set_lr(cur_lr)
@@ -221,6 +224,7 @@ class Trainer(ABC):
                     self.losses_smoothed.append(loss_smoothed)
                     self.steps.append(global_step)
 
+                pbar.update()
                 pbar.set_description(
                     f"Epoch {epoch}/{num_epochs}, step={global_step}, "
                     f"lr={cur_lr:.2e}, loss={loss_value:.4f}"
