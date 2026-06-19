@@ -120,7 +120,7 @@ class Trainer(ABC):
         print(f"Loading model with size: {size_b / MiB:.3f} MiB")
 
         state = torch.load(
-            f"{self.output_dir}/{resume_from}",
+            f"{self.output_dir}/{resume_from}.pt",
             map_location="cpu",
         )
 
@@ -182,7 +182,7 @@ class Trainer(ABC):
         device = next(self.model.parameters()).device
 
         global_step = self.steps[-1] if len(self.steps) > 0 else 0
-        loss_ema = self.losses_ema[-1] if len(self.losses_ema) > 0 else None
+        loss_smoothed = self.losses_smoothed[-1] if len(self.losses_smoothed) > 0 else None
 
         self._set_lr(0.0 if warmup_steps > 0 else lr)
 
@@ -208,7 +208,7 @@ class Trainer(ABC):
                 global_step += 1
                 loss_value = float(loss.detach().item())
 
-                if loss_ema is None:
+                if loss_smoothed is None:
                     loss_smoothed = loss_value
                 else:
                     loss_smoothed = (
@@ -218,7 +218,7 @@ class Trainer(ABC):
 
                 if global_step % log_every == 0:
                     self.losses.append(loss_value)
-                    self.losses_smoothed.append(loss_ema)
+                    self.losses_smoothed.append(loss_smoothed)
                     self.steps.append(global_step)
 
                 pbar.set_description(

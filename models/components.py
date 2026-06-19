@@ -22,8 +22,8 @@ class MLP(nn.Module):
         self.net = nn.Sequential(*layers)
 
         if final_init:
-            nn.init.zeros_(self.final.weight)  # type: ignore
-            nn.init.zeros_(self.final.bias)  # type: ignore
+            nn.init.zeros_(self.net[-1].weight)  # type: ignore
+            nn.init.zeros_(self.net[-1].bias)  # type: ignore
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
