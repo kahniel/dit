@@ -1,4 +1,4 @@
-from models import LatentCFGTrainer
+from trainers import LatentCFGTrainer
 
 from pathlib import Path
 from cleanfid import fid
