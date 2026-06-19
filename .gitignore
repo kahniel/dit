@@ -4,3 +4,5 @@ samples/
 .ipynb_checkpoints/
 .DS_Store
 .vscode/
+__pycache__/
+.mypy_cache/
