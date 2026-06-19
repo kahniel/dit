@@ -3,16 +3,18 @@ import os
 
 from matplotlib import pyplot as plt
 import torch
+from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
 
 class VAETrainer(Trainer):
     def __init__(
         self,
+        dataloader: DataLoader,
         reverse_transform=None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(dataloader=dataloader)
         self.reverse_transform = reverse_transform
 
     def get_train_loss(self, batch):
