@@ -64,7 +64,7 @@ class VAETrainer(Trainer):
 
         grid = make_grid(x_all, nrow=num_images, normalize=False)
 
-        writer.add_image("samples/vae_reconstructions", grid, global_step)
+        self.writer.add_image("samples/vae_reconstructions", grid, global_step)
 
         plt.figure(figsize=(12, 6))
         plt.imshow(grid.permute(1, 2, 0))
