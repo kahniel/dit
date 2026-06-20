@@ -41,7 +41,6 @@ class VAETrainer(Trainer):
             "opt": self.opt.state_dict(),
             "steps": self.steps,
             "losses": self.losses,
-            "losses_smoothed": self.losses_smoothed,
         }
 
         torch.save(

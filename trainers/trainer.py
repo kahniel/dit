@@ -5,6 +5,7 @@ import uuid
 import random
 import copy
 import inspect
+import time
 
 import torch
 import torch.nn as nn
@@ -132,7 +133,6 @@ class Trainer(ABC):
 
         self.losses = state["losses"]
         self.steps = state["steps"]
-        self.losses_smoothed = state.get("losses_smoothed", [])
 
     def train(
         self,
@@ -145,7 +145,6 @@ class Trainer(ABC):
         warmup_steps: int = 0,
         log_every: int = 100,
         ckpt_every: Optional[int] = None,
-        loss_smoothing: float = 0.99,
         **kwargs,
     ):
         """
@@ -171,7 +170,6 @@ class Trainer(ABC):
             print(f"Training model with size: {size_b / MiB:.3f} MiB")
             self.losses = []
             self.steps = []
-            self.losses_smoothed = []
 
         # Initialize optimizer and LR
         self.opt = self.get_optimizer(lr)
@@ -183,20 +181,18 @@ class Trainer(ABC):
         device = next(self.model.parameters()).device
 
         global_step = self.steps[-1] if len(self.steps) > 0 else 0
-        loss_smoothed = (
-            self.losses_smoothed[-1] if len(self.losses_smoothed) > 0 else None
-        )
 
         self._set_lr(0.0 if warmup_steps > 0 else lr)
 
+        steps_per_epoch = len(self.dataloader)
+        total_steps = num_epochs * steps_per_epoch
+        started_at = time.perf_counter()
         self.writer = SummaryWriter(
             log_dir=os.path.join(self.output_dir, "tensorboard")
         )
-        pbar = tqdm(
-            total=num_epochs * len(self.dataloader), desc=f"Epoch {1}/{num_epochs}"
-        )
+        pbar = tqdm(total=total_steps, desc=f"Epoch {1}/{num_epochs}")
         for epoch in range(1, num_epochs + 1):
-            for batch in self.dataloader:
+            for batch_idx, batch in enumerate(self.dataloader):
                 if warmup_steps > 0:
                     cur_lr = lr * min(1.0, (global_step + 1) / warmup_steps)
                     self._set_lr(cur_lr)
@@ -215,20 +211,29 @@ class Trainer(ABC):
                 global_step += 1
                 loss_value = float(loss.detach().item())
 
-                if loss_smoothed is None:
-                    loss_smoothed = loss_value
-                else:
-                    loss_smoothed = (
-                        loss_smoothing * loss_smoothed
-                        + (1 - loss_smoothing) * loss_value
-                    )
+                local_step = (epoch - 1) * steps_per_epoch + batch_idx + 1
+                elapsed_s = time.perf_counter() - started_at
+                steps_per_sec = local_step / max(elapsed_s, 1e-9)
+                remaining_steps = total_steps - local_step
+                eta_s = remaining_steps / max(steps_per_sec, 1e-9)
+                progress_pct = 100.0 * local_step / total_steps
 
                 if global_step % log_every == 0:
                     self.losses.append(loss_value)
-                    self.losses_smoothed.append(loss_smoothed)
                     self.steps.append(global_step)
                     self.writer.add_scalar("train/loss", loss_value, global_step)
-                    self.writer.add_scalar("train/lr", cur_lr, global_step)
+                    self.writer.add_scalar(
+                        "train/progress_pct", progress_pct, global_step
+                    )
+                    self.writer.add_scalar("train/eta_hours", eta_s / 3600, global_step)
+                    self.writer.add_scalar(
+                        "train/elapsed_hours", elapsed_s / 3600, global_step
+                    )
+                    self.writer.add_scalar(
+                        "train/steps_per_sec", steps_per_sec, global_step
+                    )
+                    self.writer.add_scalar("train/epoch", epoch, global_step)
+                    self.writer.flush()
 
                 pbar.update()
                 pbar.set_description(

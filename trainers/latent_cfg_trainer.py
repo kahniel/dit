@@ -230,26 +230,13 @@ class LatentCFGTrainer(Trainer):
             "opt": self.opt.state_dict(),
             "steps": self.steps,
             "losses": self.losses,
-            "losses_smoothed": self.losses_smoothed,
         }
 
         torch.save(state, os.path.join(self.output_dir, f"{ckpt_name}_state.pt"))
 
-        if len(self.steps) > 0:
-            plt.figure()
-            plt.plot(self.steps, self.losses_smoothed)
-            plt.xlabel("Step")
-            plt.ylabel("Smoothed loss")
-            plt.title("Training Loss")
-            plt.savefig(
-                os.path.join(self.output_dir, f"{ckpt_name}_lossplot.png"),
-                bbox_inches="tight",
-            )
-            plt.close()
-
         title = f"Latent CFG samples ({ckpt_name})"
-        if len(self.losses_smoothed) > 0:
-            title += f", loss={self.losses_smoothed[-1]:.4f}"
+        if len(self.losses) > 0:
+            title += f", loss={self.losses[-1]:.4f}"
 
         self.visualize_samples(
             save_path=os.path.join(self.output_dir, f"{ckpt_name}_output.png"),
