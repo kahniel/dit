@@ -39,6 +39,7 @@ class VAETrainer(Trainer):
         state = {
             "raw": self.model.state_dict(),
             "opt": self.opt.state_dict(),
+            "global_step": global_step,
             "steps": self.steps,
             "losses": self.losses,
         }

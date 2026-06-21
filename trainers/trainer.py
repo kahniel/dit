@@ -69,6 +69,12 @@ class Trainer(ABC):
     def checkpoint(self, ckpt_name: str, global_step: int):
         pass
 
+    def _checkpoint_name(self, epoch: int) -> str:
+        return f"epoch_{epoch}_state"
+
+    def _checkpoint_path(self, checkpoint_name: str) -> str:
+        return os.path.join(self.output_dir, f"{checkpoint_name}.pt")
+
     def get_optimizer(self, lr: float):
         return torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-4)
 
@@ -113,7 +119,7 @@ class Trainer(ABC):
         self,
         model,
         run_name: str,
-        resume_from: str,
+        checkpoint_name: str,
     ):
         self.output_dir = os.path.join("runs/", run_name)
 
@@ -121,10 +127,7 @@ class Trainer(ABC):
         size_b = model_size_b(self.model)
         print(f"Loading model with size: {size_b / MiB:.3f} MiB")
 
-        state = torch.load(
-            f"{self.output_dir}/{resume_from}.pt",
-            map_location="cpu",
-        )
+        state = torch.load(self._checkpoint_path(checkpoint_name), map_location="cpu")
 
         self.model.load_state_dict(state["raw"])
         if self.using_ema_model:
@@ -133,6 +136,10 @@ class Trainer(ABC):
 
         self.losses = state["losses"]
         self.steps = state["steps"]
+        self.global_step = state.get(
+            "global_step",
+            self.steps[-1] if len(self.steps) > 0 else 0,
+        )
 
     def train(
         self,
@@ -140,7 +147,7 @@ class Trainer(ABC):
         num_epochs: int,
         lr: float = 1e-3,
         run_name: Optional[str] = None,
-        resume_from: Optional[str] = None,
+        resume_from: Optional[int] = None,
         ema_decay: float = 0.999,
         warmup_steps: int = 0,
         log_every: int = 100,
@@ -149,10 +156,19 @@ class Trainer(ABC):
     ):
         """
         Linear warmup from 0 -> lr over `warmup_steps`, then constant lr.
+        `num_epochs` is the number of additional epochs to run. When resuming,
+        `resume_from` is the last completed epoch number.
         """
         # Initialize run name and output directory
         run_name = run_name or self.random_name()
         self.output_dir = os.path.join("runs/", run_name)
+        start_epoch = resume_from or 0
+        end_epoch = start_epoch + num_epochs
+
+        if num_epochs <= 0:
+            raise ValueError("num_epochs must be positive")
+        if resume_from is not None and resume_from < 0:
+            raise ValueError("resume_from must be a non-negative epoch number")
 
         if resume_from is None:
             os.makedirs(self.output_dir, exist_ok=False)
@@ -160,7 +176,10 @@ class Trainer(ABC):
 
         # Grab size
         if resume_from is not None:
-            self.load(model, run_name, resume_from)
+            self.load(model, run_name, self._checkpoint_name(resume_from))
+            print(
+                f"Resuming from epoch {resume_from}; training through epoch {end_epoch}"
+            )
         else:
             self.model = model
             if self.using_ema_model:
@@ -170,28 +189,34 @@ class Trainer(ABC):
             print(f"Training model with size: {size_b / MiB:.3f} MiB")
             self.losses = []
             self.steps = []
+            self.global_step = 0
 
         # Initialize optimizer and LR
         self.opt = self.get_optimizer(lr)
         if resume_from is not None:
-            state = torch.load(f"{self.output_dir}/{resume_from}.pt")
+            state = torch.load(
+                self._checkpoint_path(self._checkpoint_name(resume_from)),
+                map_location="cpu",
+            )
             self.opt.load_state_dict(state["opt"])
 
         self.model.train()
         device = next(self.model.parameters()).device
 
-        global_step = self.steps[-1] if len(self.steps) > 0 else 0
+        global_step = self.global_step
 
         self._set_lr(0.0 if warmup_steps > 0 else lr)
 
         steps_per_epoch = len(self.dataloader)
+        if steps_per_epoch <= 0:
+            raise ValueError("dataloader must contain at least one batch")
         total_steps = num_epochs * steps_per_epoch
         started_at = time.perf_counter()
         self.writer = SummaryWriter(
             log_dir=os.path.join(self.output_dir, "tensorboard")
         )
-        pbar = tqdm(total=total_steps, desc=f"Epoch {1}/{num_epochs}")
-        for epoch in range(1, num_epochs + 1):
+        pbar = tqdm(total=total_steps, desc=f"Epoch {start_epoch + 1}/{end_epoch}")
+        for epoch in range(start_epoch + 1, end_epoch + 1):
             for batch_idx, batch in enumerate(self.dataloader):
                 if warmup_steps > 0:
                     cur_lr = lr * min(1.0, (global_step + 1) / warmup_steps)
@@ -211,12 +236,14 @@ class Trainer(ABC):
                 global_step += 1
                 loss_value = float(loss.detach().item())
 
-                local_step = (epoch - 1) * steps_per_epoch + batch_idx + 1
+                session_step = (
+                    (epoch - start_epoch - 1) * steps_per_epoch + batch_idx + 1
+                )
                 elapsed_s = time.perf_counter() - started_at
-                steps_per_sec = local_step / max(elapsed_s, 1e-9)
-                remaining_steps = total_steps - local_step
+                steps_per_sec = session_step / max(elapsed_s, 1e-9)
+                remaining_steps = total_steps - session_step
                 eta_s = remaining_steps / max(steps_per_sec, 1e-9)
-                progress_pct = 100.0 * local_step / total_steps
+                progress_pct = 100.0 * session_step / total_steps
 
                 if global_step % log_every == 0:
                     self.losses.append(loss_value)
@@ -233,11 +260,17 @@ class Trainer(ABC):
                         "train/steps_per_sec", steps_per_sec, global_step
                     )
                     self.writer.add_scalar("train/epoch", epoch, global_step)
+                    self.writer.add_scalar(
+                        "train/session_step", session_step, global_step
+                    )
+                    self.writer.add_scalar(
+                        "train/remaining_steps", remaining_steps, global_step
+                    )
                     self.writer.flush()
 
                 pbar.update()
                 pbar.set_description(
-                    f"Epoch {epoch}/{num_epochs}, step={global_step}, "
+                    f"Epoch {epoch}/{end_epoch}, step={global_step}, "
                     f"lr={cur_lr:.2e}, loss={loss_value:.4f}"
                 )
 
@@ -246,10 +279,12 @@ class Trainer(ABC):
                 self.checkpoint(f"epoch_{epoch}", global_step)
                 self.model.train()
 
-        if ckpt_every is None or num_epochs % ckpt_every != 0:
-            self.checkpoint(f"epoch_{num_epochs}", global_step)
+        if ckpt_every is None or end_epoch % ckpt_every != 0:
+            self.checkpoint(f"epoch_{end_epoch}", global_step)
 
         self.model.eval()
+        pbar.close()
+        self.writer.close()
 
     @torch.no_grad()
     def update_ema(self, decay=0.999):

@@ -228,6 +228,7 @@ class LatentCFGTrainer(Trainer):
             "raw": self.model.state_dict(),
             "ema": self.ema_model.state_dict(),
             "opt": self.opt.state_dict(),
+            "global_step": global_step,
             "steps": self.steps,
             "losses": self.losses,
         }
