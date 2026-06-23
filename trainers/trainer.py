@@ -66,14 +66,14 @@ class Trainer(ABC):
         for pg in self.opt.param_groups:
             pg["lr"] = lr
 
-    def checkpoint(self, ckpt_name: str, global_step: int):
+    def checkpoint(self, ckpt_name: str, ckpt_dir: Optional[str] = None, global_step: Optional[int] = None):
         pass
 
     def _checkpoint_name(self, epoch: int) -> str:
         return f"epoch_{epoch}_state"
 
-    def _checkpoint_path(self, checkpoint_name: str) -> str:
-        return os.path.join(self.output_dir, f"{checkpoint_name}.pt")
+    def _checkpoint_path(self, weights_dir: str, checkpoint_name: str) -> str:
+        return os.path.join(weights_dir, f"{checkpoint_name}.pt")
 
     def get_optimizer(self, lr: float):
         return torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-4)
@@ -118,20 +118,25 @@ class Trainer(ABC):
     def load(
         self,
         model,
-        run_name: str,
-        checkpoint_name: str,
+        ckpt_name: str,
+        ckpt_dir: Optional[str] = None,
     ):
-        self.output_dir = os.path.join("runs/", run_name)
-
+        if ckpt_dir is None:
+            ckpt_dir = self.output_dir
+            
         self.model = model
+        if not hasattr(self, "lr"):
+            self.lr = 1e-4
+        self.opt = self.get_optimizer(self.lr)
         size_b = model_size_b(self.model)
         print(f"Loading model with size: {size_b / MiB:.3f} MiB")
 
-        state = torch.load(self._checkpoint_path(checkpoint_name), map_location="cpu")
+        state = torch.load(os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu")
 
         self.model.load_state_dict(state["raw"])
+        self.opt.load_state_dict(state["opt"])
         if self.using_ema_model:
-            self.ema_model = copy.deepcopy(model).eval()
+            self.ema_model = copy.deepcopy(self.model).eval()
             self.ema_model.load_state_dict(state["ema"])
 
         self.losses = state["losses"]
@@ -174,14 +179,16 @@ class Trainer(ABC):
             os.makedirs(self.output_dir, exist_ok=False)
             print("Initialized output directory at: " + self.output_dir)
 
+        self.lr = lr
         # Grab size
         if resume_from is not None:
-            self.load(model, run_name, self._checkpoint_name(resume_from))
+            self.load(model, self._checkpoint_name(resume_from))
             print(
                 f"Resuming from epoch {resume_from}; training through epoch {end_epoch}"
             )
         else:
             self.model = model
+            self.opt = self.get_optimizer(self.lr)
             if self.using_ema_model:
                 self.ema_model = copy.deepcopy(model).eval()
 
@@ -190,15 +197,6 @@ class Trainer(ABC):
             self.losses = []
             self.steps = []
             self.global_step = 0
-
-        # Initialize optimizer and LR
-        self.opt = self.get_optimizer(lr)
-        if resume_from is not None:
-            state = torch.load(
-                self._checkpoint_path(self._checkpoint_name(resume_from)),
-                map_location="cpu",
-            )
-            self.opt.load_state_dict(state["opt"])
 
         self.model.train()
         device = next(self.model.parameters()).device
@@ -245,7 +243,7 @@ class Trainer(ABC):
                 eta_s = remaining_steps / max(steps_per_sec, 1e-9)
                 progress_pct = 100.0 * session_step / total_steps
 
-                if global_step % log_every == 0:
+                if global_step % log_every == 0 or batch_idx == steps_per_epoch:
                     self.losses.append(loss_value)
                     self.steps.append(global_step)
                     self.writer.add_scalar("train/loss", loss_value, global_step)
@@ -276,11 +274,11 @@ class Trainer(ABC):
 
             if ckpt_every is not None and epoch % ckpt_every == 0:
                 self.model.eval()
-                self.checkpoint(f"epoch_{epoch}", global_step)
+                self.checkpoint(f"epoch_{epoch}")
                 self.model.train()
 
         if ckpt_every is None or end_epoch % ckpt_every != 0:
-            self.checkpoint(f"epoch_{end_epoch}", global_step)
+            self.checkpoint(f"epoch_{end_epoch}", global_step=global_step)
 
         self.model.eval()
         pbar.close()

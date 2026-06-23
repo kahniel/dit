@@ -223,7 +223,9 @@ class LatentCFGTrainer(Trainer):
             plt.show()
 
     @torch.no_grad()
-    def checkpoint(self, ckpt_name: str, global_step: int):
+    def checkpoint(self, ckpt_name: str, ckpt_dir: Optional[str] = None, global_step: Optional[int] = None):
+        if ckpt_dir is None:
+            ckpt_dir = self.output_dir
         state = {
             "raw": self.model.state_dict(),
             "ema": self.ema_model.state_dict(),
@@ -233,14 +235,15 @@ class LatentCFGTrainer(Trainer):
             "losses": self.losses,
         }
 
-        torch.save(state, os.path.join(self.output_dir, f"{ckpt_name}_state.pt"))
+        torch.save(state, os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"))
 
         title = f"Latent CFG samples ({ckpt_name})"
         if len(self.losses) > 0:
             title += f", loss={self.losses[-1]:.4f}"
-
-        self.visualize_samples(
-            save_path=os.path.join(self.output_dir, f"{ckpt_name}_output.png"),
-            title=title,
-            global_step=global_step,
-        )
+        
+        if global_step is not None:
+            self.visualize_samples(
+                save_path=os.path.join(ckpt_dir, f"{ckpt_name}_output.png"),
+                title=title,
+                global_step=global_step,
+            )

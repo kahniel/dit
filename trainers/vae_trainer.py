@@ -1,5 +1,6 @@
 from trainers.trainer import Trainer
 import os
+from typing import Optional
 
 from matplotlib import pyplot as plt
 import torch
@@ -35,7 +36,10 @@ class VAETrainer(Trainer):
         return x[:n], y[:n]
 
     @torch.no_grad()
-    def checkpoint(self, ckpt_name: str, global_step: int):
+    def checkpoint(self, ckpt_name: str, ckpt_dir: Optional[str] = None, global_step: Optional[int] = None):
+        if ckpt_dir is None:
+            ckpt_dir = self.output_dir
+        
         state = {
             "raw": self.model.state_dict(),
             "opt": self.opt.state_dict(),
@@ -44,10 +48,7 @@ class VAETrainer(Trainer):
             "losses": self.losses,
         }
 
-        torch.save(
-            state,
-            os.path.join(self.output_dir, f"{ckpt_name}_state.pt"),
-        )
+        torch.save(state, os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"))
 
         num_images = 10
         x, _ = self.get_preview_batch(num_images)
@@ -64,14 +65,15 @@ class VAETrainer(Trainer):
 
         grid = make_grid(x_all, nrow=num_images, normalize=False)
 
-        self.writer.add_image("samples/vae_reconstructions", grid, global_step)
-
-        plt.figure(figsize=(12, 6))
-        plt.imshow(grid.permute(1, 2, 0))
-        plt.axis("off")
-        plt.title(f"VAE Reconstruction ({ckpt_name})")
-        plt.savefig(
-            os.path.join(self.output_dir, f"{ckpt_name}_output.png"),
-            bbox_inches="tight",
-        )
-        plt.close()
+        if global_step is not None:
+            self.writer.add_image("samples/vae_reconstructions", grid, global_step)
+            
+            plt.figure(figsize=(12, 6))
+            plt.imshow(grid.permute(1, 2, 0))
+            plt.axis("off")
+            plt.title(f"VAE Reconstruction ({ckpt_name})")
+            plt.savefig(
+                os.path.join(ckpt_dir, f"{ckpt_name}_output.png"),
+                bbox_inches="tight",
+            )
+            plt.close()
