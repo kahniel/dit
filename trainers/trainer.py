@@ -274,7 +274,7 @@ class Trainer(ABC):
 
             if ckpt_every is not None and epoch % ckpt_every == 0:
                 self.model.eval()
-                self.checkpoint(f"epoch_{epoch}")
+                self.checkpoint(f"epoch_{epoch}", global_step=global_step)
                 self.model.train()
 
         if ckpt_every is None or end_epoch % ckpt_every != 0:
