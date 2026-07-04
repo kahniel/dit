@@ -7,7 +7,7 @@ from cleanfid import fid
 def fid_guidance_sweep(
     trainer: LatentCFGTrainer,
     root_dir,
-    guidance_scales=(1.0, 1.25, 1.5, 1.75, 2.0),
+    guidance_scales=(1.25, 1.5, 1.75, 2.0, 2.25),
     num_images=10_000,
     batch_size=256,
     num_timesteps=100,

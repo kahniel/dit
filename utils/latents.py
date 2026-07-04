@@ -52,20 +52,27 @@ def visualize_latent_interpolation(
 
 
 @torch.no_grad()
-def estimate_latent_stats(vae: VAE, dataloader: DataLoader, batches=100):
-    zs = []
+def estimate_latent_stats(vae: VAE, dataloader: DataLoader):
+    was_training = vae.training
     vae.eval()
     device = next(vae.parameters()).device
 
-    for _ in tqdm(range(1, batches + 1)):
-        x, _ = next(iter(dataloader))
-        x = x.to(device)
+    zs = []
+    for x, _ in dataloader:
+        x = x.to(device, non_blocking=True)
         z_mean, _ = vae.encode(x)
-        zs.append(z_mean)
+        zs.append(z_mean.detach().cpu())
+
+    if not zs:
+        raise ValueError("dataloader did not produce any batches")
 
     z = torch.cat(zs, dim=0)
     mean = z.mean(dim=(0, 2, 3), keepdim=True)
-    std = z.std(dim=(0, 2, 3), keepdim=True).clamp_min(1e-6)
+    std = z.std(dim=(0, 2, 3), unbiased=False, keepdim=True).clamp_min(1e-6)
+
+    if was_training:
+        vae.train()
+
     return mean, std
 
 
