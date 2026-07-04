@@ -41,11 +41,13 @@ class VAETrainer(Trainer):
         save_path: Optional[str] = None,
         num_images=10,
         get_new=True,
+        images=None,
         title: Optional[str] = None,
         global_step: Optional[int] = None,
     ):
-
-        if not get_new:
+        if images is not None:
+            x = images
+        elif not get_new:
             x, _ = self.get_preview_batch(num_images)
         else:
             x, _ = next(iter(self.dataloader))
