@@ -36,22 +36,19 @@ class VAETrainer(Trainer):
         return x[:n], y[:n]
 
     @torch.no_grad()
-    def checkpoint(self, ckpt_name: str, ckpt_dir: Optional[str] = None, global_step: Optional[int] = None):
-        if ckpt_dir is None:
-            ckpt_dir = self.output_dir
-        
-        state = {
-            "raw": self.model.state_dict(),
-            "opt": self.opt.state_dict(),
-            "global_step": global_step,
-            "steps": self.steps,
-            "losses": self.losses,
-        }
+    def visualize_samples(
+        self,
+        save_path: Optional[str] = None,
+        num_images=10,
+        get_new=True,
+        title: Optional[str] = None,
+        global_step: Optional[int] = None,
+    ):
 
-        torch.save(state, os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"))
-
-        num_images = 10
-        x, _ = self.get_preview_batch(num_images)
+        if not get_new:
+            x, _ = self.get_preview_batch(num_images)
+        else:
+            x, _ = next(iter(self.dataloader))
         _, _, x_mean = self.model(x)
 
         x = x.cpu()
@@ -66,14 +63,47 @@ class VAETrainer(Trainer):
         grid = make_grid(x_all, nrow=num_images, normalize=False)
 
         if global_step is not None:
-            self.writer.add_image("samples/vae_reconstructions", grid, global_step)
-            
-            plt.figure(figsize=(12, 6))
-            plt.imshow(grid.permute(1, 2, 0))
-            plt.axis("off")
-            plt.title(f"VAE Reconstruction ({ckpt_name})")
+            if hasattr(self, "writer") and self.writer is not None:
+                self.writer.add_image("samples/vae_reconstructions", grid, global_step)
+                self.writer.flush()
+
+        plt.figure(figsize=(12, 6))
+        plt.imshow(grid.permute(1, 2, 0))
+        plt.axis("off")
+        if title is not None:
+            plt.title(title)
+
+        if save_path is not None:
             plt.savefig(
-                os.path.join(ckpt_dir, f"{ckpt_name}_output.png"),
+                save_path,
                 bbox_inches="tight",
             )
             plt.close()
+        else:
+            plt.show()
+
+    @torch.no_grad()
+    def checkpoint(
+        self,
+        ckpt_name: str,
+        ckpt_dir: Optional[str] = None,
+        global_step: Optional[int] = None,
+    ):
+        if ckpt_dir is None:
+            ckpt_dir = self.output_dir
+
+        state = {
+            "raw": self.model.state_dict(),
+            "opt": self.opt.state_dict(),
+            "global_step": global_step,
+            "steps": self.steps,
+            "losses": self.losses,
+        }
+
+        torch.save(state, os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"))
+        self.visualize_samples(
+            save_path=os.path.join(ckpt_dir, f"{ckpt_name}_output.png"),
+            get_new=False,
+            title=f"VAE Reconstruction ({ckpt_name})",
+            global_step=global_step,
+        )

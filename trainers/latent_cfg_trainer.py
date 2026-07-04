@@ -208,9 +208,11 @@ class LatentCFGTrainer(Trainer):
             axes[idx].set_title(f"w={guidance_scale:.1f}")
 
             if global_step is not None:
-                self.writer.add_image(
-                    f"samples/guidance_{guidance_scale:.1f}", grid, global_step
-                )
+                if hasattr(self, "writer") and self.writer is not None:
+                    self.writer.add_image(
+                        f"samples/guidance_{guidance_scale:.1f}", grid, global_step
+                    )
+                    self.writer.flush()
 
         if title is not None:
             fig.suptitle(title)
@@ -223,7 +225,12 @@ class LatentCFGTrainer(Trainer):
             plt.show()
 
     @torch.no_grad()
-    def checkpoint(self, ckpt_name: str, ckpt_dir: Optional[str] = None, global_step: Optional[int] = None):
+    def checkpoint(
+        self,
+        ckpt_name: str,
+        ckpt_dir: Optional[str] = None,
+        global_step: Optional[int] = None,
+    ):
         if ckpt_dir is None:
             ckpt_dir = self.output_dir
         state = {
@@ -240,7 +247,7 @@ class LatentCFGTrainer(Trainer):
         title = f"Latent CFG samples ({ckpt_name})"
         if len(self.losses) > 0:
             title += f", loss={self.losses[-1]:.4f}"
-        
+
         if global_step is not None:
             self.visualize_samples(
                 save_path=os.path.join(ckpt_dir, f"{ckpt_name}_output.png"),

@@ -66,7 +66,12 @@ class Trainer(ABC):
         for pg in self.opt.param_groups:
             pg["lr"] = lr
 
-    def checkpoint(self, ckpt_name: str, ckpt_dir: Optional[str] = None, global_step: Optional[int] = None):
+    def checkpoint(
+        self,
+        ckpt_name: str,
+        ckpt_dir: Optional[str] = None,
+        global_step: Optional[int] = None,
+    ):
         pass
 
     def _checkpoint_name(self, epoch: int) -> str:
@@ -123,7 +128,7 @@ class Trainer(ABC):
     ):
         if ckpt_dir is None:
             ckpt_dir = self.output_dir
-            
+
         self.model = model
         if not hasattr(self, "lr"):
             self.lr = 1e-4
@@ -131,7 +136,9 @@ class Trainer(ABC):
         size_b = model_size_b(self.model)
         print(f"Loading model with size: {size_b / MiB:.3f} MiB")
 
-        state = torch.load(os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu")
+        state = torch.load(
+            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu"
+        )
 
         self.model.load_state_dict(state["raw"])
         self.opt.load_state_dict(state["opt"])
@@ -243,7 +250,7 @@ class Trainer(ABC):
                 eta_s = remaining_steps / max(steps_per_sec, 1e-9)
                 progress_pct = 100.0 * session_step / total_steps
 
-                if global_step % log_every == 0 or batch_idx == steps_per_epoch:
+                if global_step % log_every == 0 or batch_idx == steps_per_epoch - 1:
                     self.losses.append(loss_value)
                     self.steps.append(global_step)
                     self.writer.add_scalar("train/loss", loss_value, global_step)
