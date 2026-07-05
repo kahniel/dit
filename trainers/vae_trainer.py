@@ -46,11 +46,17 @@ class VAETrainer(Trainer):
         global_step: Optional[int] = None,
     ):
         if images is not None:
-            x = images
+            x = self._move_to_device(
+                images,
+                next(self.model.parameters()).device,
+            )
+            num_images = len(images)
         elif not get_new:
             x, _ = self.get_preview_batch(num_images)
         else:
             x, _ = next(iter(self.dataloader))
+            x = x[:num_images]
+        
         _, _, x_mean = self.model(x)
 
         x = x.cpu()

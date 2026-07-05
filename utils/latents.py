@@ -58,7 +58,7 @@ def estimate_latent_stats(vae: VAE, dataloader: DataLoader):
     device = next(vae.parameters()).device
 
     zs = []
-    for x, _ in dataloader:
+    for x, _ in tqdm(dataloader):
         x = x.to(device, non_blocking=True)
         z_mean, _ = vae.encode(x)
         zs.append(z_mean.detach().cpu())
