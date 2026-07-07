@@ -1,11 +1,9 @@
-from trainers import LatentCFGTrainer
-
 from pathlib import Path
 from cleanfid import fid
 
 
 def fid_guidance_sweep(
-    trainer: LatentCFGTrainer,
+    trainer,
     root_dir,
     guidance_scales=(1.25, 1.5, 1.75, 2.0, 2.25),
     num_images=10_000,
