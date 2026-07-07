@@ -10,7 +10,7 @@ def fid_guidance_sweep(
     guidance_scales=(1.25, 1.5, 1.75, 2.0, 2.25),
     num_images=10_000,
     batch_size=256,
-    num_timesteps=100,
+    num_timesteps=250,
     split="train",
     use_raw=False,
     fid_batch_size=64,

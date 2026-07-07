@@ -1,6 +1,7 @@
 from models import VAE
 from flow import GaussianConditionalProbabilityPath, CFGVectorFieldODE, EulerSimulator
 from trainers.trainer import Trainer
+from utils.fid import fid_guidance_sweep
 
 import os
 from pathlib import Path
@@ -205,7 +206,7 @@ class LatentCFGTrainer(Trainer):
             grid = make_grid(x, nrow=samples_per_class, normalize=False)
             axes[idx].imshow(grid.permute(1, 2, 0).cpu())
             axes[idx].axis("off")
-            axes[idx].set_title(f"w={guidance_scale:.1f}")
+            axes[idx].set_title(f"w={guidance_scale:g}")
 
             if global_step is not None:
                 if hasattr(self, "writer") and self.writer is not None:
@@ -254,3 +255,11 @@ class LatentCFGTrainer(Trainer):
                 title=title,
                 global_step=global_step,
             )
+        
+            if self.writer is not None:
+                scores = fid_guidance_sweep(self, f"samples/{self.run_name}_{ckpt_name}/", num_images=1000)
+                for w, score in scores.items():
+                    self.writer.add_scalar(
+                        f"train/fid_w_{w}", score, global_step
+                    )
+                self.writer.flush()

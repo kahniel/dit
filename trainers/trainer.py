@@ -187,12 +187,13 @@ class Trainer(ABC):
         **kwargs,
     ):
         """
-        Linear warmup from 0 -> lr over `warmup_steps`, then constant lr.
+        Linear warmup from 0 -> lr over `warmup_steps`, then constant/cosine lr.
         `num_epochs` is the number of additional epochs to run. When resuming,
         `resume_from` is the last completed epoch number.
         """
         # Initialize run name and output directory
         run_name = run_name or self.random_name()
+        self.run_name = run_name
         self.output_dir = os.path.join("runs/", run_name)
         start_epoch = resume_from or 0
         end_epoch = start_epoch + num_epochs
