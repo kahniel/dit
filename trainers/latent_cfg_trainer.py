@@ -177,7 +177,7 @@ class LatentCFGTrainer(Trainer):
         self,
         save_path: Optional[str] = None,
         samples_per_class: int = 5,
-        num_timesteps: int = 100,
+        num_timesteps: int = 250,
         guidance_scales: tuple[float, ...] = (1.0, 1.5, 2.0),
         use_tqdm: bool = False,
         use_raw: bool = False,

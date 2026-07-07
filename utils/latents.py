@@ -52,36 +52,11 @@ def visualize_latent_interpolation(
 
 
 @torch.no_grad()
-def estimate_latent_stats(vae: VAE, dataloader: DataLoader):
-    was_training = vae.training
-    vae.eval()
-    device = next(vae.parameters()).device
-
-    zs = []
-    for x, _ in tqdm(dataloader):
-        x = x.to(device, non_blocking=True)
-        z_mean, _ = vae.encode(x)
-        zs.append(z_mean.detach().cpu())
-
-    if not zs:
-        raise ValueError("dataloader did not produce any batches")
-
-    z = torch.cat(zs, dim=0)
-    mean = z.mean(dim=(0, 2, 3), keepdim=True)
-    std = z.std(dim=(0, 2, 3), unbiased=False, keepdim=True).clamp_min(1e-6)
-
-    if was_training:
-        vae.train()
-
-    return mean, std
-
-
-@torch.no_grad()
 def convert_to_latent_dataset(
     vae: VAE,
     dataset,
     batch_size: int = 256,
-    latent_stats=None,
+    get_latent_stats=False,
 ):
     device = next(vae.parameters()).device
     was_training = vae.training
@@ -95,10 +70,17 @@ def convert_to_latent_dataset(
         x = x.to(device)
         z_mean, _ = vae.encode(x)
 
-        latents.append(z_mean.cpu())
+        latents.append(z_mean.detach().cpu())
         labels.append(y.cpu())
+    
+    z = torch.cat(latents, dim=0)
+    mean = z.mean(dim=(0, 2, 3), keepdim=True)
+    std = z.std(dim=(0, 2, 3), unbiased=False, keepdim=True).clamp_min(1e-6)
 
     if was_training:
         vae.train()
-
+        
+    if get_latent_stats:
+        return TensorDataset(torch.cat(latents), torch.cat(labels)), (mean, std)
     return TensorDataset(torch.cat(latents), torch.cat(labels))
+    
