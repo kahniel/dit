@@ -256,7 +256,7 @@ class LatentCFGTrainer(Trainer):
                 global_step=global_step,
             )
         
-            if self.writer is not None:
+            if hasattr(self, "writer") and self.writer is not None:
                 scores = fid_guidance_sweep(self, f"samples/{self.run_name}_{ckpt_name}/", num_images=1000)
                 for w, score in scores.items():
                     self.writer.add_scalar(
