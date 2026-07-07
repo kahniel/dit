@@ -7,6 +7,7 @@ import copy
 import inspect
 import time
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -65,6 +66,24 @@ class Trainer(ABC):
     def _set_lr(self, lr: float):
         for pg in self.opt.param_groups:
             pg["lr"] = lr
+
+    def _get_lr(
+        self,
+        lr: float,
+        global_step: int,
+        total_steps: int,
+        warmup_steps: int = 0,
+        cosine: bool = False,
+    ):
+        if global_step < warmup_steps:
+            cur_lr = lr * (global_step / warmup_steps)
+        elif cosine:
+            progress = (global_step - warmup_steps) / max(1, total_steps - warmup_steps)
+            cur_lr = 0.1 * lr + 0.9 * lr * 0.5 * (1 + np.cos(np.pi * progress))
+        else:
+            cur_lr = lr
+
+        return cur_lr
 
     def checkpoint(
         self,
@@ -164,6 +183,7 @@ class Trainer(ABC):
         warmup_steps: int = 0,
         log_every: int = 100,
         ckpt_every: Optional[int] = None,
+        cosine: bool = False,
         **kwargs,
     ):
         """
@@ -210,8 +230,6 @@ class Trainer(ABC):
 
         global_step = self.global_step
 
-        self._set_lr(0.0 if warmup_steps > 0 else lr)
-
         steps_per_epoch = len(self.dataloader)
         if steps_per_epoch <= 0:
             raise ValueError("dataloader must contain at least one batch")
@@ -220,14 +238,14 @@ class Trainer(ABC):
         self.writer = SummaryWriter(
             log_dir=os.path.join(self.output_dir, "tensorboard")
         )
+
         pbar = tqdm(total=total_steps, desc=f"Epoch {start_epoch + 1}/{end_epoch}")
         for epoch in range(start_epoch + 1, end_epoch + 1):
             for batch_idx, batch in enumerate(self.dataloader):
-                if warmup_steps > 0:
-                    cur_lr = lr * min(1.0, (global_step + 1) / warmup_steps)
-                    self._set_lr(cur_lr)
-                else:
-                    cur_lr = lr
+                cur_lr = self._get_lr(
+                    lr, global_step, total_steps, warmup_steps, cosine
+                )
+                self._set_lr(cur_lr)
 
                 batch = self._move_to_device(batch, device)
 
