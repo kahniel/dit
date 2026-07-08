@@ -12,7 +12,6 @@ from typing import Optional
 from matplotlib import pyplot as plt
 import torch
 from torch.utils.data import DataLoader
-from torchvision.utils import make_grid
 
 
 class LatentCFGTrainer(Trainer):
@@ -21,11 +20,8 @@ class LatentCFGTrainer(Trainer):
         dataloader: DataLoader,
         vae: VAE,
         path: GaussianConditionalProbabilityPath,
-        null_label: int,
         latent_stats: tuple[float, float] = (0.0, 1.0),
         null_ratio: float = 0.1,
-        eps: float = 0.001,
-        reverse_transform=None,
     ):
         assert null_ratio > 0 and null_ratio < 1
         super().__init__(dataloader=dataloader, using_ema_model=True)
@@ -33,72 +29,12 @@ class LatentCFGTrainer(Trainer):
         self.vae = vae
         self.path = path
 
-        self.null_label = null_label
         self.latent_mean, self.latent_std = latent_stats
         self.null_ratio = null_ratio
-        self.reverse_transform = reverse_transform
 
         self.vae.eval()
         for p in self.vae.parameters():
             p.requires_grad_(False)
-
-    def _latent_stats(self, device: torch.device):
-        dtype = next(self.vae.parameters()).dtype
-        latent_mean = torch.as_tensor(self.latent_mean, device=device, dtype=dtype)
-        latent_std = torch.as_tensor(self.latent_std, device=device, dtype=dtype)
-        return latent_mean, latent_std
-
-    def _latent_shape(self) -> tuple[int, int, int]:
-        patchifier = getattr(self.model, "patchifier", None)
-        if patchifier is not None:
-            return patchifier.c_in, patchifier.img_size, patchifier.img_size
-
-        batch = next(iter(self.dataloader))
-        z, _ = batch
-        return tuple(z.shape[1:])
-
-    def _decode_latents(self, z: torch.Tensor) -> torch.Tensor:
-        device = z.device
-        latent_mean, latent_std = self._latent_stats(device)
-        z = z * latent_std + latent_mean
-
-        self.vae.to(device)
-        x = self.vae.decode(z)
-        if self.reverse_transform is not None:
-            x = self.reverse_transform(x)
-        return torch.clamp(x, 0.0, 1.0)
-
-    def _generate_samples(
-        self,
-        y: torch.Tensor,
-        guidance_scale: float = 1.5,
-        num_timesteps: int = 250,
-        use_raw: bool = False,
-        use_tqdm: bool = False,
-    ) -> torch.Tensor:
-        sample_model = self.model if use_raw else self.ema_model
-        sample_model.eval()
-        device = next(sample_model.parameters()).device
-
-        y = y.to(device)
-        latent_shape = self._latent_shape()
-        z0 = torch.randn(y.shape[0], *latent_shape, device=device)
-
-        ode = CFGVectorFieldODE(
-            sample_model,
-            null_label=self.null_label,
-            y=y,
-            guidance_scale=guidance_scale,
-        )
-        simulator = EulerSimulator(ode)
-
-        ts = (
-            torch.linspace(0, 0.999, num_timesteps, device=device)
-            .view(1, -1)
-            .expand(y.shape[0], -1)
-        )
-        z1 = simulator.simulate(z0, ts, use_tqdm=use_tqdm)
-        return self._decode_latents(z1)
 
     def get_train_loss(self, batch):
         z, y = batch
@@ -174,58 +110,6 @@ class LatentCFGTrainer(Trainer):
         pbar.close()
 
     @torch.no_grad()
-    def visualize_samples(
-        self,
-        save_path: Optional[str] = None,
-        samples_per_class: int = 5,
-        num_timesteps: int = 250,
-        guidance_scales: tuple[float, ...] = (1.0, 1.5, 2.0),
-        use_tqdm: bool = False,
-        use_raw: bool = False,
-        global_step: Optional[int] = None,
-        title: Optional[str] = None,
-    ):
-        fig, axes = plt.subplots(
-            1,
-            len(guidance_scales),
-            figsize=(4 * len(guidance_scales), 4),
-            squeeze=False,
-        )
-        axes = axes[0]
-
-        for idx, guidance_scale in enumerate(guidance_scales):
-            y = torch.arange(10, dtype=torch.int64).repeat_interleave(samples_per_class)
-            x = self._generate_samples(
-                y=y,
-                guidance_scale=guidance_scale,
-                num_timesteps=num_timesteps,
-                use_raw=use_raw,
-                use_tqdm=use_tqdm,
-            )
-
-            grid = make_grid(x, nrow=samples_per_class, normalize=False)
-            axes[idx].imshow(grid.permute(1, 2, 0).cpu())
-            axes[idx].axis("off")
-            axes[idx].set_title(f"w={guidance_scale:g}")
-
-            if global_step is not None:
-                if hasattr(self, "writer") and self.writer is not None:
-                    self.writer.add_image(
-                        f"samples/guidance_{guidance_scale:.1f}", grid, global_step
-                    )
-                    self.writer.flush()
-
-        if title is not None:
-            fig.suptitle(title)
-
-        plt.tight_layout()
-        if save_path is not None:
-            plt.savefig(save_path, bbox_inches="tight")
-            plt.close(fig)
-        else:
-            plt.show()
-
-    @torch.no_grad()
     def checkpoint(
         self,
         ckpt_name: str,
@@ -250,16 +134,26 @@ class LatentCFGTrainer(Trainer):
             title += f", loss={self.losses[-1]:.4f}"
 
         if global_step is not None:
-            self.visualize_samples(
+            grids = self.ema_model.visualize_samples(
                 save_path=os.path.join(ckpt_dir, f"{ckpt_name}_output.png"),
                 title=title,
-                global_step=global_step,
             )
-        
-            if hasattr(self, "writer") and self.writer is not None:
-                scores = fid_guidance_sweep(self, f"samples/{self.run_name}_{ckpt_name}/", num_images=1000)
-                for w, score in scores.items():
-                    self.writer.add_scalar(
-                        f"train/fid_w_{w}", score, global_step
+            if (
+                global_step is not None
+                and hasattr(self, "writer")
+                and self.writer is not None
+            ):
+                for guidance_scale, grid in grids.items():
+                    self.writer.add_image(
+                        f"samples/guidance_{guidance_scale:.1f}", grid, global_step
                     )
+                    self.writer.flush()
+
+                scores = fid_guidance_sweep(
+                    self.ema_model,
+                    f"samples/{self.run_name}_{ckpt_name}/",
+                    num_images=1000,
+                )
+                for w, score in scores.items():
+                    self.writer.add_scalar(f"train/fid_w_{w}", score, global_step)
                 self.writer.flush()

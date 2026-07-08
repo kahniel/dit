@@ -1,10 +1,17 @@
 import torch
 import torch.nn as nn
+from torchvision.utils import make_grid
 from einops import rearrange
 from einops.layers.torch import Rearrange
+from matplotlib import pyplot as plt
+from typing import Optional
+from PIL import Image
+from tqdm import tqdm
+from pathlib import Path
 
 from models.components import MLP, MHA
-from flow.ode import ConditionalVectorField
+from models.vae import VAE
+from flow.ode import CFGVectorFieldODE, ConditionalVectorField, EulerSimulator
 
 
 class FourierEncoder(nn.Module):
@@ -204,6 +211,7 @@ class Depatchifier(nn.Module):
 class DiffusionTransformerFlowModel(ConditionalVectorField):
     def __init__(
         self,
+        vae: VAE,
         img_size: int = 32,
         patch_size: int = 8,
         num_layers: int = 12,
@@ -212,8 +220,11 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
         heads: int = 4,
         final_dim: int = 10,
         n_classes: int = 11,
+        null_label: int = 10,
     ):
         super().__init__()
+        self.vae = vae
+
         # 0. Construct time_embedder and y_embedder
         self.time_embedder = FourierEncoder(dim)
         self.y_embedder = nn.Embedding(num_embeddings=n_classes, embedding_dim=dim)
@@ -241,6 +252,8 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
             c_out=c,
         )
 
+        self.null_label = null_label
+
     def forward(
         self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor
     ) -> torch.Tensor:
@@ -265,3 +278,144 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
         x = self.depatchifier(x)
 
         return x
+
+    def _latent_shape(self) -> tuple[int, int, int]:
+        return self.patchifier.c_in, self.patchifier.img_size, self.patchifier.img_size
+
+    def _decode_latents(self, z: torch.Tensor) -> torch.Tensor:
+        device = z.device
+        latent_mean, latent_std = self.vae.get_stats(device)
+        z = z * latent_std + latent_mean
+
+        self.vae.to(device)
+        x = self.vae.decode(z)
+        if self.vae.reverse_transform is not None:
+            x = self.vae.reverse_transform(x)
+        return torch.clamp(x, 0.0, 1.0)
+
+    def _generate_samples(
+        self,
+        y: torch.Tensor,
+        guidance_scale: float = 1.5,
+        num_timesteps: int = 250,
+        use_tqdm: bool = False,
+    ) -> torch.Tensor:
+        self.eval()
+        device = next(self.parameters()).device
+
+        y = y.to(device)
+        latent_shape = self._latent_shape()
+        z0 = torch.randn(y.shape[0], *latent_shape, device=device)
+
+        ode = CFGVectorFieldODE(
+            self,
+            null_label=self.null_label,
+            y=y,
+            guidance_scale=guidance_scale,
+        )
+        simulator = EulerSimulator(ode)
+
+        ts = (
+            torch.linspace(0, 0.999, num_timesteps, device=device)
+            .view(1, -1)
+            .expand(y.shape[0], -1)
+        )
+        z1 = simulator.simulate(z0, ts, use_tqdm=use_tqdm)
+        return self._decode_latents(z1)
+
+    @torch.no_grad()
+    def sample(
+        self,
+        num_samples: int,
+        out_dir,
+        batch_size: int = 256,
+        guidance_scale: float = 1.5,
+        num_timesteps: int = 250,
+        seed=None,
+        overwrite=False,
+    ):
+        if seed is not None:
+            torch.manual_seed(seed)
+
+        out_path = Path(out_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+
+        existing = sorted(out_path.glob("*.png"))
+
+        if overwrite:
+            for image_path in existing:
+                image_path.unlink()
+            existing = []
+        elif existing:
+            raise FileExistsError(
+                f"{out_path} already contains PNG files. Use overwrite=True or a new directory."
+            )
+
+        written = 0
+        pbar = tqdm(total=num_samples, desc=f"generating samples w={guidance_scale}")
+        while written < num_samples:
+            cur_bs = min(batch_size, num_samples - written)
+            device = next(self.parameters()).device
+            y = (torch.arange(written, written + cur_bs, device=device) % 10).long()
+            x = self._generate_samples(
+                y=y,
+                guidance_scale=guidance_scale,
+                num_timesteps=num_timesteps,
+                use_tqdm=False,
+            )
+
+            x_uint8 = (
+                (x * 255.0).round().to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
+            )
+            for img in x_uint8:
+                Image.fromarray(img).save(out_path / f"{written:06d}.png")
+                written += 1
+
+            pbar.update(cur_bs)
+        pbar.close()
+
+    @torch.no_grad()
+    def visualize_samples(
+        self,
+        save_path: Optional[str] = None,
+        samples_per_class: int = 5,
+        num_timesteps: int = 250,
+        guidance_scales: tuple[float, ...] = (1.0, 1.5, 2.0),
+        use_tqdm: bool = False,
+        title: Optional[str] = None,
+    ) -> dict[float, torch.Tensor]:
+        fig, axes = plt.subplots(
+            1,
+            len(guidance_scales),
+            figsize=(4 * len(guidance_scales), 4),
+            squeeze=False,
+        )
+        axes = axes[0]
+
+        grids = {}
+        for idx, guidance_scale in enumerate(guidance_scales):
+            y = torch.arange(10, dtype=torch.int64).repeat_interleave(samples_per_class)
+            x = self._generate_samples(
+                y=y,
+                guidance_scale=guidance_scale,
+                num_timesteps=num_timesteps,
+                use_tqdm=use_tqdm,
+            )
+
+            grid = make_grid(x, nrow=samples_per_class, normalize=False)
+            axes[idx].imshow(grid.permute(1, 2, 0).cpu())
+            axes[idx].axis("off")
+            axes[idx].set_title(f"w={guidance_scale:g}")
+            grids[guidance_scale] = grid
+
+        if title is not None:
+            fig.suptitle(title)
+
+        plt.tight_layout()
+        if save_path is not None:
+            plt.savefig(save_path, bbox_inches="tight")
+            plt.close(fig)
+        else:
+            plt.show()
+
+        return grids

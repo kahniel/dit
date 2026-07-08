@@ -6,6 +6,8 @@ from einops.layers.torch import Rearrange
 import torch.nn.functional as F
 from tqdm import tqdm
 from torch.utils.data import DataLoader, TensorDataset
+from torchvision.utils import make_grid
+from matplotlib import pyplot as plt
 
 from models.components import MHA, MLP
 
@@ -220,10 +222,15 @@ class Decoder(nn.Module):
 
 class VAE(nn.Module):
     def __init__(
-        self, data_channels: int, hidden_channels: list[int], beta: float = 0.1
+        self,
+        data_channels: int,
+        hidden_channels: list[int],
+        beta: float = 0.1,
+        reverse_transform=None,
     ):
         super().__init__()
         self.beta = beta
+        self.reverse_transform = reverse_transform
 
         # Encoder
         self._encoder = Encoder(data_channels, hidden_channels)
@@ -286,3 +293,64 @@ class VAE(nn.Module):
 
         self.set_stats((mean, std))
         return TensorDataset(torch.cat(latents), torch.cat(labels))
+
+    def get_preview_batch(self, dataloader, n=10):
+        if not hasattr(self, "preview_batch"):
+            batch = next(iter(dataloader))
+            self.preview_batch = batch
+
+        batch = self._move_to_device(
+            self.preview_batch,
+            next(self.model.parameters()).device,
+        )
+        x, y = batch
+        return x[:n], y[:n]
+
+    @torch.no_grad()
+    def visualize_samples(
+        self,
+        dataloader,
+        save_path: Optional[str] = None,
+        num_images=10,
+        get_new=True,
+        images=None,
+        title: Optional[str] = None,
+    ) -> torch.Tensor:
+        if images is not None:
+            x = images.to(next(self.parameters()).device)
+            num_images = len(images)
+        elif not get_new:
+            x, _ = self.get_preview_batch(dataloader, num_images)
+        else:
+            x, _ = next(iter(dataloader))
+            x = x[:num_images]
+
+        _, _, x_mean = self(x)
+
+        x = x.cpu()
+        x_mean = x_mean.cpu()
+
+        x_all = torch.cat([x, x_mean], dim=0)
+
+        if self.reverse_transform is not None:
+            x_all = self.reverse_transform(x_all)
+        x_all = torch.clamp(x_all, 0.0, 1.0)
+
+        grid = make_grid(x_all, nrow=num_images, normalize=False)
+
+        plt.figure(figsize=(12, 6))
+        plt.imshow(grid.permute(1, 2, 0))
+        plt.axis("off")
+        if title is not None:
+            plt.title(title)
+
+        if save_path is not None:
+            plt.savefig(
+                save_path,
+                bbox_inches="tight",
+            )
+            plt.close()
+        else:
+            plt.show()
+
+        return grid
