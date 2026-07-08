@@ -1,0 +1,7 @@
+torch>=2.2
+torchvision>=0.17
+einops>=0.3
+tqdm>=4.66
+matplotlib>=3.7
+pillow>=10.0
+cleanfid>=0.1
