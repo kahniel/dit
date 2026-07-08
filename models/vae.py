@@ -253,7 +253,7 @@ class VAE(nn.Module):
     def set_stats(self, latent_stats: tuple):
         self.latent_stats = latent_stats
 
-    def get_stats(self, device: torch.device = torch.cpu):
+    def get_stats(self, device: torch.device = torch.device("cpu")):
         dtype = next(self.parameters()).dtype
         latent_mean, latent_std = self.latent_stats
         latent_mean = torch.as_tensor(latent_mean, device=device, dtype=dtype)
