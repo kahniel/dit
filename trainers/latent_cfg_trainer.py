@@ -49,61 +49,6 @@ class LatentCFGTrainer(Trainer):
         return torch.nn.functional.mse_loss(u_theta, u_target)
 
     @torch.no_grad()
-    def sample(
-        self,
-        num_samples: int,
-        out_dir,
-        batch_size: int = 256,
-        guidance_scale: float = 1.5,
-        num_timesteps: int = 250,
-        use_raw=False,
-        seed=None,
-        overwrite=False,
-    ):
-        if seed is not None:
-            torch.manual_seed(seed)
-
-        out_path = Path(out_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
-
-        existing = sorted(out_path.glob("*.png"))
-
-        if overwrite:
-            for image_path in existing:
-                image_path.unlink()
-            existing = []
-        elif existing:
-            raise FileExistsError(
-                f"{out_path} already contains PNG files. Use overwrite=True or a new directory."
-            )
-
-        written = 0
-        pbar = tqdm(total=num_samples, desc=f"export FID samples w={guidance_scale}")
-        while written < num_samples:
-            cur_bs = min(batch_size, num_samples - written)
-            device = next(
-                (self.model if use_raw else self.ema_model).parameters()
-            ).device
-            y = (torch.arange(written, written + cur_bs, device=device) % 10).long()
-            x = self._generate_samples(
-                y=y,
-                guidance_scale=guidance_scale,
-                num_timesteps=num_timesteps,
-                use_raw=use_raw,
-                use_tqdm=False,
-            )
-
-            x_uint8 = (
-                (x * 255.0).round().to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
-            )
-            for img in x_uint8:
-                Image.fromarray(img).save(out_path / f"{written:06d}.png")
-                written += 1
-
-            pbar.update(cur_bs)
-        pbar.close()
-
-    @torch.no_grad()
     def checkpoint(
         self,
         ckpt_name: str,
@@ -113,8 +58,8 @@ class LatentCFGTrainer(Trainer):
         if ckpt_dir is None:
             ckpt_dir = self.output_dir
         state = {
-            "raw": self.model.state_dict(),
-            "ema": self.ema_model.state_dict(),
+            "raw": self.raw_model.state_dict(),
+            "ema": self.model.state_dict(),
             "opt": self.opt.state_dict(),
             "global_step": global_step,
             "steps": self.steps,
@@ -128,7 +73,7 @@ class LatentCFGTrainer(Trainer):
             title += f", loss={self.losses[-1]:.4f}"
 
         if global_step is not None:
-            grids = self.ema_model.visualize_samples(
+            grids = self.model.visualize_samples(
                 save_path=os.path.join(ckpt_dir, f"{ckpt_name}_output.png"),
                 title=title,
             )
@@ -144,7 +89,7 @@ class LatentCFGTrainer(Trainer):
                     self.writer.flush()
 
                 scores = fid_guidance_sweep(
-                    self.ema_model,
+                    self.model,
                     f"samples/{self.run_name}_{ckpt_name}/",
                     num_images=1000,
                 )

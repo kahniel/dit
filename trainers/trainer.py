@@ -100,9 +100,16 @@ class Trainer(ABC):
         return os.path.join(weights_dir, f"{checkpoint_name}.pt")
 
     def get_optimizer(self, lr: float):
+        if self.using_ema_model:
+            return torch.optim.AdamW(
+                (p for p in self.raw_model.parameters() if p.requires_grad),
+                lr=lr,
+                weight_decay=1e-4,
+            )
         return torch.optim.AdamW(
             (p for p in self.model.parameters() if p.requires_grad),
-            lr=lr, weight_decay=1e-4
+            lr=lr,
+            weight_decay=1e-4,
         )
 
     def random_name(self) -> str:
@@ -151,22 +158,24 @@ class Trainer(ABC):
         if ckpt_dir is None:
             ckpt_dir = self.output_dir
 
-        self.model = model
-        if not hasattr(self, "lr"):
-            self.lr = 1e-4
-        self.opt = self.get_optimizer(self.lr)
-        size_b = model_size_b(self.model)
-        print(f"Loading model with size: {size_b / MiB:.3f} MiB")
-
         state = torch.load(
             os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu"
         )
 
-        self.model.load_state_dict(state["raw"])
-        self.opt.load_state_dict(state["opt"])
+        self.model = model
+        size_b = model_size_b(self.model)
+        print(f"Loading model with size: {size_b / MiB:.3f} MiB")
         if self.using_ema_model:
-            self.ema_model = copy.deepcopy(self.model).eval()
-            self.ema_model.load_state_dict(state["ema"])
+            self.raw_model = copy.deepcopy(self.model)
+            self.raw_model.load_state_dict(state["raw"])
+            self.model.load_state_dict(state["ema"])
+        else:
+            self.model.load_state_dict(state["raw"])
+
+        if not hasattr(self, "lr"):
+            self.lr = 1e-4
+        self.opt = self.get_optimizer(self.lr)
+        self.opt.load_state_dict(state["opt"])
 
         self.losses = state["losses"]
         self.steps = state["steps"]
@@ -219,9 +228,9 @@ class Trainer(ABC):
             )
         else:
             self.model = model
-            self.opt = self.get_optimizer(self.lr)
             if self.using_ema_model:
-                self.ema_model = copy.deepcopy(model).eval()
+                self.raw_model = copy.deepcopy(model)
+            self.opt = self.get_optimizer(self.lr)
 
             size_b = model_size_b(self.model)
             print(f"Training model with size: {size_b / MiB:.3f} MiB")
@@ -229,8 +238,9 @@ class Trainer(ABC):
             self.steps = []
             self.global_step = 0
 
-        self.model.train()
-        device = next(self.model.parameters()).device
+        self.train_model = self.raw_model if self.using_ema_model else self.model
+        self.train_model.train()
+        device = next(self.train_model.parameters()).device
 
         global_step = self.global_step
 
@@ -256,7 +266,7 @@ class Trainer(ABC):
                 self.opt.zero_grad(set_to_none=True)
                 loss = self._call_get_train_loss(batch, **kwargs)
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), 1.0)
                 self.opt.step()
                 self.update_ema(decay=ema_decay)
 
@@ -309,15 +319,15 @@ class Trainer(ABC):
         if ckpt_every is None or end_epoch % ckpt_every != 0:
             self.checkpoint(f"epoch_{end_epoch}", global_step=global_step)
 
-        self.model.eval()
+        self.train_model.eval()
         pbar.close()
         self.writer.close()
 
     @torch.no_grad()
     def update_ema(self, decay=0.999):
         if self.using_ema_model:
-            for p, p_ema in zip(self.model.parameters(), self.ema_model.parameters()):
+            for p, p_ema in zip(self.raw_model.parameters(), self.model.parameters()):
                 p_ema.mul_(decay).add_(p.detach(), alpha=1 - decay)
 
-            for b, b_ema in zip(self.model.buffers(), self.ema_model.buffers()):
+            for b, b_ema in zip(self.model.buffers(), self.model.buffers()):
                 b_ema.copy_(b)
