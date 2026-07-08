@@ -261,9 +261,7 @@ class VAE(nn.Module):
         return latent_mean, latent_std
 
     @torch.no_grad()
-    def convert_to_latent_dataset(
-        self, dataset, batch_size: int = 256, get_latent_stats=False
-    ):
+    def convert_to_latent_dataset(self, dataset, batch_size: int = 256):
         device = next(self.parameters()).device
         was_training = self.training
         self.eval()
