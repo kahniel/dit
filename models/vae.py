@@ -4,6 +4,8 @@ import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 import torch.nn.functional as F
+from tqdm import tqdm
+from torch.utils.data import DataLoader, TensorDataset
 
 from models.components import MHA, MLP
 
@@ -247,3 +249,42 @@ class VAE(nn.Module):
         recon_loss = F.l1_loss(x_mean, x_true)
 
         return recon_loss + self.beta * kl_loss
+
+    def set_stats(self, latent_stats: tuple):
+        self.latent_stats = latent_stats
+
+    def get_stats(self, device: torch.device = torch.cpu):
+        dtype = next(self.parameters()).dtype
+        latent_mean, latent_std = self.latent_stats
+        latent_mean = torch.as_tensor(latent_mean, device=device, dtype=dtype)
+        latent_std = torch.as_tensor(latent_std, device=device, dtype=dtype)
+        return latent_mean, latent_std
+
+    @torch.no_grad()
+    def convert_to_latent_dataset(
+        self, dataset, batch_size: int = 256, get_latent_stats=False
+    ):
+        device = next(self.parameters()).device
+        was_training = self.training
+        self.eval()
+
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+        latents = []
+        labels = []
+
+        for x, y in tqdm(loader, desc="Converting dataset to latents"):
+            x = x.to(device)
+            z_mean, _ = self.encode(x)
+
+            latents.append(z_mean.detach().cpu())
+            labels.append(y.cpu())
+
+        z = torch.cat(latents, dim=0)
+        mean = z.mean(dim=(0, 2, 3), keepdim=True)
+        std = z.std(dim=(0, 2, 3), unbiased=False, keepdim=True).clamp_min(1e-6)
+
+        if was_training:
+            self.train()
+
+        self.set_stats((mean, std))
+        return TensorDataset(torch.cat(latents), torch.cat(labels))

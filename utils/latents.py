@@ -49,38 +49,3 @@ def visualize_latent_interpolation(
     else:
         plt.show()
     return samples
-
-
-@torch.no_grad()
-def convert_to_latent_dataset(
-    vae: VAE,
-    dataset,
-    batch_size: int = 256,
-    get_latent_stats=False,
-):
-    device = next(vae.parameters()).device
-    was_training = vae.training
-    vae.eval()
-
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-    latents = []
-    labels = []
-
-    for x, y in tqdm(loader, desc="Converting dataset to latents"):
-        x = x.to(device)
-        z_mean, _ = vae.encode(x)
-
-        latents.append(z_mean.detach().cpu())
-        labels.append(y.cpu())
-    
-    z = torch.cat(latents, dim=0)
-    mean = z.mean(dim=(0, 2, 3), keepdim=True)
-    std = z.std(dim=(0, 2, 3), unbiased=False, keepdim=True).clamp_min(1e-6)
-
-    if was_training:
-        vae.train()
-        
-    if get_latent_stats:
-        return TensorDataset(torch.cat(latents), torch.cat(labels)), (mean, std)
-    return TensorDataset(torch.cat(latents), torch.cat(labels))
-    
