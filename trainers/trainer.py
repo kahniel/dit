@@ -100,7 +100,10 @@ class Trainer(ABC):
         return os.path.join(weights_dir, f"{checkpoint_name}.pt")
 
     def get_optimizer(self, lr: float):
-        return torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-4)
+        return torch.optim.AdamW(
+            (p for p in self.model.parameters() if p.requires_grad),
+            lr=lr, weight_decay=1e-4
+        )
 
     def random_name(self) -> str:
         adjectives = [

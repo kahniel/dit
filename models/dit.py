@@ -224,6 +224,9 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
     ):
         super().__init__()
         self.vae = vae
+        self.vae.eval()
+        for p in self.vae.parameters():
+            p.requires_grad_(False)
 
         # 0. Construct time_embedder and y_embedder
         self.time_embedder = FourierEncoder(dim)

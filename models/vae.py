@@ -309,13 +309,16 @@ class VAE(nn.Module):
     @torch.no_grad()
     def visualize_samples(
         self,
-        dataloader,
         save_path: Optional[str] = None,
         num_images=10,
         get_new=True,
-        images=None,
+        images =None,
+        dataloader: Optional[DataLoader] = None,
         title: Optional[str] = None,
     ) -> torch.Tensor:
+        if (images is None) == (dataloader is None):
+            raise ValueError('Either images or dataloader argument is required')
+        
         if images is not None:
             x = images.to(next(self.parameters()).device)
             num_images = len(images)

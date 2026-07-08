@@ -10,11 +10,9 @@ class VAETrainer(Trainer):
     def __init__(
         self,
         dataloader: DataLoader,
-        reverse_transform=None,
         **kwargs,
     ):
         super().__init__(dataloader=dataloader)
-        self.reverse_transform = reverse_transform
 
     def get_train_loss(self, batch):
         x, y = batch

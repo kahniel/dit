@@ -18,7 +18,6 @@ class LatentCFGTrainer(Trainer):
     def __init__(
         self,
         dataloader: DataLoader,
-        vae: VAE,
         path: GaussianConditionalProbabilityPath,
         latent_stats: tuple[float, float] = (0.0, 1.0),
         null_ratio: float = 0.1,
@@ -26,15 +25,10 @@ class LatentCFGTrainer(Trainer):
         assert null_ratio > 0 and null_ratio < 1
         super().__init__(dataloader=dataloader, using_ema_model=True)
 
-        self.vae = vae
         self.path = path
 
         self.latent_mean, self.latent_std = latent_stats
         self.null_ratio = null_ratio
-
-        self.vae.eval()
-        for p in self.vae.parameters():
-            p.requires_grad_(False)
 
     def get_train_loss(self, batch):
         z, y = batch
