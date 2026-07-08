@@ -59,7 +59,7 @@ class LatentCFGTrainer(Trainer):
             ckpt_dir = self.output_dir
         state = {
             "raw": self.raw_model.state_dict(),
-            "ema": self.model.state_dict(),
+            "model": self.model.state_dict(),
             "opt": self.opt.state_dict(),
             "global_step": global_step,
             "steps": self.steps,

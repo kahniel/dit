@@ -8,6 +8,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision.utils import make_grid
 from matplotlib import pyplot as plt
+import os
 
 from models.components import MHA, MLP
 
@@ -249,6 +250,25 @@ class VAE(nn.Module):
         z = z_mean + torch.exp(0.5 * z_logvar) * torch.randn_like(z_mean)
         x_mean = self.decode(z)
         return z_mean, z_logvar, x_mean
+    
+    
+    def load(self, ckpt_name: str, ckpt_dir: Optional[str] = None):
+        state = torch.load(
+            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu"
+        )
+        
+        self.load_state_dict(state["model"])
+    
+    @torch.no_grad()
+    def checkpoint(
+        self,
+        ckpt_name: str,
+        ckpt_dir: Optional[str] = None,
+    ):
+        state = {"model": self.state_dict()}
+
+        torch.save(state, os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"))
+
 
     def compute_loss(self, z_mean, z_logvar, x_mean, x_true):
         kl_loss = 0.5 * (z_mean.pow(2) + torch.exp(z_logvar) - z_logvar - 1).mean()

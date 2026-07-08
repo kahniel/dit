@@ -30,7 +30,7 @@ class VAETrainer(Trainer):
             ckpt_dir = self.output_dir
 
         state = {
-            "raw": self.model.state_dict(),
+            "model": self.model.state_dict(),
             "opt": self.opt.state_dict(),
             "global_step": global_step,
             "steps": self.steps,

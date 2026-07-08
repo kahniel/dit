@@ -8,6 +8,7 @@ from typing import Optional
 from PIL import Image
 from tqdm import tqdm
 from pathlib import Path
+import os
 
 from models.components import MLP, MHA
 from models.vae import VAE
@@ -281,6 +282,25 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
         x = self.depatchifier(x)
 
         return x
+
+
+    def load(self, ckpt_name: str, ckpt_dir: Optional[str] = None):
+        state = torch.load(
+            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu"
+        )
+
+        self.load_state_dict(state["model"])
+    
+    @torch.no_grad()
+    def checkpoint(
+        self,
+        ckpt_name: str,
+        ckpt_dir: Optional[str] = None,
+    ):
+        state = {"model": self.state_dict()}
+
+        torch.save(state, os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"))
+
 
     def _latent_shape(self) -> tuple[int, int, int]:
         return self.patchifier.c_in, self.patchifier.img_size, self.patchifier.img_size
