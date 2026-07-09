@@ -33,6 +33,19 @@ Best result: **FID 14.91** at `w = 2.0`. FID degrades on both sides of this valu
 too little guidance under-conditions the model, too much over-saturates samples and hurts
 diversity, which is the usual CFG trade-off.
 
+## Work in progress: larger DiT
+
+The FID numbers above are from the current checkpoint (`dit_jul`, 14 layers, dim 512).
+A larger DiT is currently training — deeper and wider transformer, more epochs, and a different LR schedule than the current run. This README and the results table above will be updated once it's done and evaluated.
+
+| | Current (`dit_jul`) | New (training) |
+|---|---|---|
+| Layers | 14 | 16 |
+| Dim | 512 | 394 |
+| Epochs | 1000 | 2000 |
+| LR schedule | constant `1e-4` after warmup | cosine |
+| Status | done, FID 14.91 @ `w=2.0` | in progress |
+
 ## Project structure
 
 - [models/](models/) — VAE and DiT model definitions
