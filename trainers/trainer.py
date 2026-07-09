@@ -159,7 +159,7 @@ class Trainer(ABC):
             ckpt_dir = self.output_dir
 
         state = torch.load(
-            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu"
+            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu", weights_only=False
         )
 
         self.model = model
@@ -184,7 +184,7 @@ class Trainer(ABC):
 
     def train(
         self,
-        model: nn.Module,
+        model: nn.Module ,
         num_epochs: int,
         lr: float = 1e-3,
         run_name: Optional[str] = None,

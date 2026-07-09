@@ -18,7 +18,6 @@ def visualize_latent_interpolation(
     vae: VAE,
     n_steps: int,
     save_path: Optional[str] = None,
-    reverse_transform=None,
 ):
     vae.eval()
 
@@ -35,8 +34,8 @@ def visualize_latent_interpolation(
     zs = rearrange(zs, "1 c h w n -> n c h w")
     samples = vae.decode(zs)  # n_steps 1 h w
 
-    if reverse_transform is not None:
-        samples = reverse_transform(samples)
+    if vae.reverse_transform is not None:
+        samples = vae.reverse_transform(samples)
 
     grid = make_grid(samples, nrow=n_steps, normalize=True, value_range=(0, 1))
     plt.figure(figsize=(n_steps * 2, 2))

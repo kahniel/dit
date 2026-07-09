@@ -60,6 +60,7 @@ class LatentCFGTrainer(Trainer):
         state = {
             "raw": self.raw_model.state_dict(),
             "model": self.model.state_dict(),
+            "arch": self.model.get_arch(),
             "opt": self.opt.state_dict(),
             "global_step": global_step,
             "steps": self.steps,

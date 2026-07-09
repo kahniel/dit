@@ -224,13 +224,19 @@ class Decoder(nn.Module):
 class VAE(nn.Module):
     def __init__(
         self,
-        img_size: int,
         data_channels: int,
         hidden_channels: list[int],
         beta: float = 0.1,
         reverse_transform=None,
     ):
         super().__init__()
+        self.arch = {
+            'data_channels': data_channels,
+            'hidden_channels': hidden_channels,
+            'beta': beta,
+            'reverse_transform': reverse_transform
+        }
+
         self.beta = beta
         self.reverse_transform = reverse_transform
 
@@ -242,6 +248,25 @@ class VAE(nn.Module):
 
         self.latent_mean = nn.Parameter(torch.zeros((1, hidden_channels[-1], 1, 1)), requires_grad=False)
         self.latent_std = nn.Parameter(torch.ones((1, hidden_channels[-1], 1, 1)), requires_grad=False)
+    
+    def get_arch(self):
+        return self.arch
+    
+    @classmethod
+    def from_arch(cls, arch):
+        return cls(**arch)
+    
+    @classmethod
+    def from_ckpt(cls, ckpt_name: str, ckpt_dir: str):
+        state = torch.load(
+            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu", weights_only=False
+        )
+        model = cls.from_arch(state['arch'])
+        print(state['arch'])
+        model.load_state_dict(state["model"])
+        
+        return model
+
 
     def encode(self, x: torch.Tensor):
         return self._encoder(x)
@@ -256,9 +281,9 @@ class VAE(nn.Module):
         return z_mean, z_logvar, x_mean
     
     
-    def load(self, ckpt_name: str, ckpt_dir: Optional[str] = None):
+    def load(self, ckpt_name: str, ckpt_dir: str):
         state = torch.load(
-            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu"
+            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu", weights_only=False
         )
         
         self.load_state_dict(state["model"])

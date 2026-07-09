@@ -224,6 +224,19 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
         null_label: int = 10,
     ):
         super().__init__()
+        self.arch = {
+            'vae': vae.get_arch(),
+            'img_size': img_size,
+            'patch_size': patch_size,
+            'num_layers': num_layers,
+            'c': c,
+            'dim': dim,
+            'heads': heads,
+            'final_dim': final_dim,
+            'n_classes': n_classes,
+            'null_label': null_label,
+        }
+        
         self.vae = vae
         self.vae.eval()
         for p in self.vae.parameters():
@@ -257,6 +270,25 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
         )
 
         self.null_label = null_label
+    
+    def get_arch(self):
+        return self.arch
+    
+    @classmethod
+    def from_arch(cls, arch):
+        arch['vae'] = VAE.from_arch(arch['vae'])
+        return cls(**arch)
+    
+    @classmethod
+    def from_ckpt(cls, ckpt_name: str, ckpt_dir: str):
+        state = torch.load(
+            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu", weights_only=False
+        )
+        model = cls.from_arch(state['arch'])
+        model.load_state_dict(state["model"])
+        
+        return model
+
 
     def forward(
         self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor
@@ -284,9 +316,9 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
         return x
 
 
-    def load(self, ckpt_name: str, ckpt_dir: Optional[str] = None):
+    def load(self, ckpt_name: str, ckpt_dir: str):
         state = torch.load(
-            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu"
+            os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu", weights_only=False
         )
 
         self.load_state_dict(state["model"])

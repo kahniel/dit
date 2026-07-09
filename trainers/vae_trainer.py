@@ -32,6 +32,7 @@ class VAETrainer(Trainer):
         self.model.init_latent_dataset(self.dataloader)
         state = {
             "model": self.model.state_dict(),
+            "arch": self.model.get_arch(),
             "opt": self.opt.state_dict(),
             "global_step": global_step,
             "steps": self.steps,
