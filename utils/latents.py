@@ -2,13 +2,9 @@ from models import VAE
 
 from typing import Optional
 from matplotlib import pyplot as plt
-from tqdm import tqdm
-
 import torch
-from torch.utils.data import TensorDataset
 from torchvision.utils import make_grid
 from einops import rearrange
-from torch.utils.data import DataLoader
 
 
 @torch.no_grad()

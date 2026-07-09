@@ -1,3 +1,7 @@
+from models.components import MLP, MHA
+from models.vae import VAE
+from flow.ode import CFGVectorFieldODE, ConditionalVectorField, EulerSimulator
+
 import torch
 import torch.nn as nn
 from torchvision.utils import make_grid
@@ -9,10 +13,6 @@ from PIL import Image
 from tqdm import tqdm
 from pathlib import Path
 import os
-
-from models.components import MLP, MHA
-from models.vae import VAE
-from flow.ode import CFGVectorFieldODE, ConditionalVectorField, EulerSimulator
 
 
 class FourierEncoder(nn.Module):

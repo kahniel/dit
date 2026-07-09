@@ -1,7 +1,7 @@
+from models.dit import DiffusionTransformerFlowModel
+
 from pathlib import Path
 from cleanfid import fid
-
-from models.dit import DiffusionTransformerFlowModel
 
 
 def fid_guidance_sweep(
