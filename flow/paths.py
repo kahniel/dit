@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import List
 import torch
 from einops.layers.torch import Rearrange
-
 from torch.func import vmap, jacrev
 
 

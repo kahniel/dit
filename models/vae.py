@@ -1,3 +1,5 @@
+from models.components import MHA, MLP
+
 from typing import Optional
 import torch
 import torch.nn as nn
@@ -9,8 +11,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision.utils import make_grid
 from matplotlib import pyplot as plt
 import os
-
-from models.components import MHA, MLP
 
 
 class ResidualBlock(nn.Module):
