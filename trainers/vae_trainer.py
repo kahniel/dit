@@ -28,7 +28,8 @@ class VAETrainer(Trainer):
     ):
         if ckpt_dir is None:
             ckpt_dir = self.output_dir
-
+            
+        self.model.init_latent_dataset(self.dataloader)
         state = {
             "model": self.model.state_dict(),
             "opt": self.opt.state_dict(),

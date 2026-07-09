@@ -224,6 +224,7 @@ class Decoder(nn.Module):
 class VAE(nn.Module):
     def __init__(
         self,
+        img_size: int,
         data_channels: int,
         hidden_channels: list[int],
         beta: float = 0.1,
@@ -238,6 +239,9 @@ class VAE(nn.Module):
 
         # Decoder
         self._decoder = Decoder(data_channels, list(reversed(hidden_channels)))
+
+        self.latent_mean = nn.Parameter(torch.zeros((1, hidden_channels[-1], 1, 1)), requires_grad=False)
+        self.latent_std = nn.Parameter(torch.ones((1, hidden_channels[-1], 1, 1)), requires_grad=False)
 
     def encode(self, x: torch.Tensor):
         return self._encoder(x)
@@ -277,27 +281,25 @@ class VAE(nn.Module):
 
         return recon_loss + self.beta * kl_loss
 
-    def set_stats(self, latent_stats: tuple):
-        self.latent_stats = latent_stats
+    def set_stats(self, latent_mean, latent_std):
+        self.latent_mean = nn.Parameter(latent_mean, requires_grad=False)
+        self.latent_std = nn.Parameter(latent_std, requires_grad=False)
 
     def get_stats(self, device: torch.device = torch.device("cpu")):
-        dtype = next(self.parameters()).dtype
-        latent_mean, latent_std = self.latent_stats
-        latent_mean = torch.as_tensor(latent_mean, device=device, dtype=dtype)
-        latent_std = torch.as_tensor(latent_std, device=device, dtype=dtype)
+        latent_mean = torch.as_tensor(self.latent_mean, device=device)
+        latent_std = torch.as_tensor(self.latent_std, device=device)
         return latent_mean, latent_std
 
     @torch.no_grad()
-    def convert_to_latent_dataset(self, dataset, batch_size: int = 256):
+    def init_latent_dataset(self, dataloader):
         device = next(self.parameters()).device
         was_training = self.training
         self.eval()
-
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+        
         latents = []
         labels = []
 
-        for x, y in tqdm(loader, desc="Converting dataset to latents"):
+        for x, y in tqdm(dataloader, desc="Converting dataset to latents"):
             x = x.to(device)
             z_mean, _ = self.encode(x)
 
@@ -311,7 +313,7 @@ class VAE(nn.Module):
         if was_training:
             self.train()
 
-        self.set_stats((mean, std))
+        self.set_stats(mean, std)
         return TensorDataset(torch.cat(latents), torch.cat(labels))
 
     def get_preview_batch(self, dataloader, n=10):

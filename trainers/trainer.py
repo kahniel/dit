@@ -168,9 +168,7 @@ class Trainer(ABC):
         if self.using_ema_model:
             self.raw_model = copy.deepcopy(self.model)
             self.raw_model.load_state_dict(state["raw"])
-            self.model.load_state_dict(state["model"])
-        else:
-            self.model.load_state_dict(state["model"])
+        self.model.load(ckpt_name, ckpt_dir)
 
         if not hasattr(self, "lr"):
             self.lr = 1e-4
