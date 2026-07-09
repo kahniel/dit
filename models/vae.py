@@ -262,6 +262,7 @@ class VAE(nn.Module):
             os.path.join(ckpt_dir, f"{ckpt_name}_state.pt"), map_location="cpu", weights_only=False
         )
         model = cls.from_arch(state['arch'])
+        print(state['arch'])
         model.load_state_dict(state["model"])
         
         return model
