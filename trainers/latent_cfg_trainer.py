@@ -38,7 +38,7 @@ class LatentCFGTrainer(Trainer):
         x = self.path.sample_conditional_path(z_enc, t)
 
         u_target = self.path.conditional_vector_field(x, z_enc, t)
-        u_theta = self.model(x, t, y)
+        u_theta = self.raw_model(x, t, y)
 
         return torch.nn.functional.mse_loss(u_theta, u_target)
 
