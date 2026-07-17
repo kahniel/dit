@@ -41,7 +41,7 @@ A larger DiT is currently training — deeper and wider transformer, more epochs
 | | Current (`dit_jul`) | New (training) |
 |---|---|---|
 | Layers | 14 | 16 |
-| Dim | 512 | 394 |
+| Dim | 512 | 768 |
 | Epochs | 1000 | 2000 |
 | LR schedule | constant `1e-4` after warmup | cosine |
 | Status | done, FID 14.91 @ `w=2.0` | in progress |
