@@ -44,6 +44,7 @@ class VAETrainer(Trainer):
             save_path=os.path.join(ckpt_dir, f"{ckpt_name}_output.png"),
             get_new=False,
             title=f"VAE Reconstruction ({ckpt_name})",
+            dataloader=self.dataloader,
         )
 
         if global_step is not None:
