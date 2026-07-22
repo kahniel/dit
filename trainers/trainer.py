@@ -326,5 +326,5 @@ class Trainer(ABC):
             for p, p_ema in zip(self.raw_model.parameters(), self.model.parameters()):
                 p_ema.mul_(decay).add_(p.detach(), alpha=1 - decay)
 
-            for b, b_ema in zip(self.model.buffers(), self.model.buffers()):
+            for b, b_ema in zip(self.raw_model.buffers(), self.model.buffers()):
                 b_ema.copy_(b)
