@@ -1,3 +1,7 @@
+from pathlib import Path
+
+from PIL import Image
+
 from models.components import MHA, MLP
 
 from typing import Optional, Any
@@ -366,12 +370,63 @@ class VAE(nn.Module):
         return x[:n], y[:n]
 
     @torch.no_grad()
+    def sample(
+        self,
+        out_dir: str,
+        images,
+        overwrite=False,
+        batch_size: int = 256,
+    ):
+        out_path = Path(out_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+
+        existing = sorted(out_path.glob("*.png"))
+
+        if overwrite:
+            for image_path in existing:
+                image_path.unlink()
+            existing = []
+        elif existing:
+            raise FileExistsError(
+                f"{out_path} already contains PNG files. Use overwrite=True or a new directory."
+            )
+        
+        device = next(self.parameters()).device
+        images = images.to(device)
+        num_samples = len(images)
+
+        written = 0
+        pbar = tqdm(total=num_samples)
+        while written < num_samples:
+            cur_bs = min(batch_size, num_samples - written)
+            
+            x = images[written : written + cur_bs]
+            _, _, x_rec = self(x)
+            
+            if self.reverse_transform is not None:
+                x_rec = self.reverse_transform(x_rec)
+            x_rec = torch.clamp(x_rec, 0.0, 1.0)
+            
+            x_uint8 = (
+                (x_rec * 255.0).round().to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
+            )
+            for img in x_uint8:
+                Image.fromarray(img).save(out_path / f"{written:06d}.png")
+                written += 1
+
+            pbar.update(cur_bs)
+        pbar.close()
+        
+                
+        
+
+    @torch.no_grad()
     def visualize_samples(
         self,
         save_path: Optional[str] = None,
         num_images=10,
         get_new=True,
-        images =None,
+        images=None,
         dataloader: Optional[DataLoader] = None,
         title: Optional[str] = None,
     ) -> torch.Tensor:

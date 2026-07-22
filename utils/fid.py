@@ -1,4 +1,5 @@
 from models.dit import DiffusionTransformerFlowModel
+from models.vae import VAE
 
 from pathlib import Path
 from cleanfid import fid
@@ -9,7 +10,6 @@ def fid_guidance_sweep(
     root_dir,
     guidance_scales=(1.25, 1.5, 1.75, 2.0, 2.25),
     num_images=10_000,
-    batch_size=256,
     num_timesteps=250,
     split="train",
     fid_batch_size=64,
@@ -41,3 +41,31 @@ def fid_guidance_sweep(
             use_dataparallel=False,
         )
     return scores
+
+def fid_est_vae(
+    vae: VAE,
+    out_dir,
+    images,
+    num_timesteps=250,
+    split="train",
+    fid_batch_size=64
+):
+    try:
+        vae.sample(
+            out_dir=out_dir,
+            images=images,
+            overwrite=False,
+        )
+    except FileExistsError:
+        print("already sampled")
+
+    return fid.compute_fid(
+        str(out_dir),
+        dataset_name="cifar10",
+        dataset_res=32,
+        dataset_split=split,
+        mode="clean",
+        batch_size=fid_batch_size,
+        device=next(vae.parameters()).device,
+        use_dataparallel=False,
+    )
