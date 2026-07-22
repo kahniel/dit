@@ -13,7 +13,6 @@ class LatentCFGTrainer(Trainer):
         self,
         dataloader: DataLoader,
         path: GaussianConditionalProbabilityPath,
-        latent_stats: tuple[float, float] = (0.0, 1.0),
         null_ratio: float = 0.1,
     ):
         assert null_ratio > 0 and null_ratio < 1
@@ -21,10 +20,10 @@ class LatentCFGTrainer(Trainer):
 
         self.path = path
 
-        self.latent_mean, self.latent_std = latent_stats
         self.null_ratio = null_ratio
 
     def get_train_loss(self, batch):
+        self.latent_mean, self.latent_std = self.model.vae.get_stats()
         z, y = batch
         latent_mean, latent_std = self._latent_stats(z.device)
         z_enc = (z - latent_mean) / latent_std
