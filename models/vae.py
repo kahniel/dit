@@ -1,6 +1,6 @@
 from models.components import MHA, MLP
 
-from typing import Optional
+from typing import Optional, Any
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -315,15 +315,16 @@ class VAE(nn.Module):
         return latent_mean, latent_std
 
     @torch.no_grad()
-    def init_latent_dataset(self, dataloader):
+    def init_latent_dataset(self, dataloader, use_tqdm=False):
         device = next(self.parameters()).device
         was_training = self.training
         self.eval()
         
         latents = []
         labels = []
-
-        for x, y in tqdm(dataloader, desc="Converting dataset to latents"):
+        
+        progress = tqdm(dataloader, desc="Converting dataset to latents") if use_tqdm else dataloader
+        for x, y in progress:
             x = x.to(device)
             z_mean, _ = self.encode(x)
 
@@ -337,18 +338,30 @@ class VAE(nn.Module):
         if was_training:
             self.train()
 
+        mean = mean.to(device)
+        std = std.to(device)
         self.set_stats(mean, std)
         return TensorDataset(torch.cat(latents), torch.cat(labels))
+
+    def _move_to_device(self, batch: Any, device: torch.device) -> Any:
+        if torch.is_tensor(batch):
+            return batch.to(device)
+        if isinstance(batch, dict):
+            return {
+                key: self._move_to_device(value, device) for key, value in batch.items()
+            }
+        if isinstance(batch, tuple):
+            return tuple(self._move_to_device(value, device) for value in batch)
+        if isinstance(batch, list):
+            return [self._move_to_device(value, device) for value in batch]
+        return batch
 
     def get_preview_batch(self, dataloader, n=10):
         if not hasattr(self, "preview_batch"):
             batch = next(iter(dataloader))
             self.preview_batch = batch
 
-        batch = self._move_to_device(
-            self.preview_batch,
-            next(self.model.parameters()).device,
-        )
+        batch = self._move_to_device(self.preview_batch, next(self.parameters()).device)
         x, y = batch
         return x[:n], y[:n]
 

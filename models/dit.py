@@ -273,12 +273,12 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
     
     def get_arch(self):
         return self.arch
-    
+
     @classmethod
     def from_arch(cls, arch):
         arch['vae'] = VAE.from_arch(arch['vae'])
         return cls(**arch)
-    
+
     @classmethod
     def from_ckpt(cls, ckpt_name: str, ckpt_dir: str):
         state = torch.load(
@@ -322,7 +322,7 @@ class DiffusionTransformerFlowModel(ConditionalVectorField):
         )
 
         self.load_state_dict(state["model"])
-    
+
     @torch.no_grad()
     def checkpoint(
         self,
